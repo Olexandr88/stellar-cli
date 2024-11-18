@@ -6,11 +6,9 @@ use stellar_strkey::ed25519::{PrivateKey, PublicKey};
 
 use crate::{
     print::Print,
-    signer::{self, native_ledger, LocalKey, Signer, SignerKind},
+    signer::{self, keyring, native_ledger, LocalKey, Signer, SignerKind},
     utils,
 };
-
-const KEYCHAIN_ENTRY_NAME: &str = "org.stellar.cli";
 
 #[derive(thiserror::Error, Debug)]
 pub enum Error {
@@ -77,9 +75,10 @@ impl Args {
                     .join(" "),
             })
         } else if self.keychain {
-            Ok(Secret::Keychain {
-                entry_name: KEYCHAIN_ENTRY_NAME.to_owned(),
-            })
+            todo!();
+            // Ok(Secret::Keychain {
+            //     entry_name: KEYCHAIN_ENTRY_NAME.to_owned(),
+            // })
         } else {
             Err(Error::PasswordRead {})
         }
@@ -109,9 +108,13 @@ impl FromStr for Secret {
             })
         } else if s == "ledger" {
             Ok(Secret::Ledger)
-        } else if s == "keychain" {
+        } else if s.starts_with(keyring::KEYCHAIN_ENTRY_PREFIX) {
+            let entry_name = s
+                .strip_prefix(keyring::KEYCHAIN_ENTRY_PREFIX)
+                .ok_or(Error::InvalidAddress(s.to_string()))?;
+
             Ok(Secret::Keychain {
-                entry_name: KEYCHAIN_ENTRY_NAME.to_owned(), //TODO: namespace the entry_name to the system user or key name?
+                entry_name: entry_name.to_owned(),
             })
         } else {
             Err(Error::InvalidAddress(s.to_string()))
@@ -234,11 +237,11 @@ mod tests {
 
     #[test]
     fn test_keychain_secret() {
-        let keychain_secret = Secret::from_str("keychain").unwrap();
+        let keychain_secret = Secret::from_str("keychain:org.stellar.cli-alice").unwrap();
 
         match keychain_secret {
             Secret::Keychain { entry_name } => {
-                assert_eq!(entry_name, KEYCHAIN_ENTRY_NAME);
+                assert_eq!(entry_name, "org.stellar.cli-alice");
             }
             _ => assert!(false),
         }

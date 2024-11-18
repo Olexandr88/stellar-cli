@@ -4,7 +4,11 @@ use super::super::config::{
     locator, network,
     secret::{self, Secret},
 };
-use crate::{commands::global, print::Print};
+use crate::{
+    commands::global,
+    print::Print,
+    signer::keyring::{self, StellarEntry},
+};
 
 #[derive(thiserror::Error, Debug)]
 pub enum Error {
@@ -14,6 +18,8 @@ pub enum Error {
     Secret(#[from] secret::Error),
     #[error(transparent)]
     Network(#[from] network::Error),
+    #[error(transparent)]
+    Keyring(#[from] keyring::Error),
 }
 
 #[derive(Debug, clap::Parser, Clone)]
@@ -58,8 +64,6 @@ pub struct Cmd {
     pub fund: bool,
 }
 
-const KEYCHAIN_CONSTANT: &str = "keychain";
-
 impl Cmd {
     pub async fn run(&self, global_args: &global::Args) -> Result<(), Error> {
         if !self.fund {
@@ -91,7 +95,21 @@ impl Cmd {
         Ok(if self.as_secret {
             seed_phrase.private_key(self.hd_path)?.into()
         } else if self.keychain {
-            KEYCHAIN_CONSTANT.parse()?
+            // keychain:org.stellar.cli:<key name>
+            let entry_name_with_prefix = format!(
+                "{}{}-{}",
+                keyring::KEYCHAIN_ENTRY_PREFIX,
+                keyring::KEYCHAIN_ENTRY_SERVICE,
+                self.name
+            );
+
+            let secret: Secret = entry_name_with_prefix.parse()?; //checking that the entry name is valid before writing to the keychain
+
+            if let Secret::Keychain { entry_name } = &secret {
+                self.write_to_keychain(entry_name.clone(), seed_phrase)?;
+            }
+
+            secret
         } else {
             seed_phrase
         })
@@ -103,6 +121,19 @@ impl Cmd {
         } else {
             Secret::from_seed(self.seed.as_deref())
         }?)
+    }
+
+    fn write_to_keychain(&self, entry_name: String, seed_phrase: Secret) -> Result<(), Error> {
+        println!("Writing to keychain: {entry_name}");
+        let entry = StellarEntry::new(&entry_name)?;
+        if let Ok(key) = entry.get_public_key() {
+            println!("A key for {entry_name} already exists in your keychain: {key}");
+        } else {
+            println!("Saving a new key to your keychain: {entry_name}");
+            let key_pair = seed_phrase.key_pair(None)?;
+            entry.set_password(key_pair.as_bytes())?;
+        }
+        Ok(())
     }
 }
 
