@@ -15,12 +15,17 @@ use crate::{
 pub enum Error {
     #[error(transparent)]
     Config(#[from] locator::Error),
+
     #[error(transparent)]
     Secret(#[from] secret::Error),
+
     #[error(transparent)]
     Network(#[from] network::Error),
     #[error(transparent)]
     Keyring(#[from] keyring::Error),
+
+    #[error("An identity with the name '{0}' already exists")]
+    IdentityAlreadyExists(String),
 }
 
 #[derive(Debug, clap::Parser, Clone)]
@@ -63,12 +68,26 @@ pub struct Cmd {
     /// Fund generated key pair
     #[arg(long, default_value = "false")]
     pub fund: bool,
+
+    /// Overwrite existing identity if it already exists.
+    #[arg(long)]
+    pub overwrite: bool,
 }
 
 impl Cmd {
     pub async fn run(&self, global_args: &global::Args) -> Result<(), Error> {
+        let print = Print::new(global_args.quiet);
+
+        if self.config_locator.read_identity(&self.name).is_ok() {
+            if !self.overwrite {
+                return Err(Error::IdentityAlreadyExists(self.name.clone()));
+            }
+
+            print.exclaimln(format!("Overwriting identity '{}'", &self.name));
+        }
+
         if !self.fund {
-            Print::new(global_args.quiet).warnln(
+            print.warnln(
                 "Behavior of `generate` will change in the \
             future, and it will no longer fund by default. If you want to fund please \
             provide `--fund` flag. If you don't need to fund your keys in the future, ignore this \
@@ -77,6 +96,7 @@ impl Cmd {
         }
         let secret = self.secret()?;
         self.config_locator.write_identity(&self.name, &secret)?;
+
         if !self.no_fund {
             let addr = secret.public_key(self.hd_path)?;
             let network = self.network.get(&self.config_locator)?;
@@ -88,6 +108,7 @@ impl Cmd {
                 })
                 .unwrap_or_default();
         }
+
         Ok(())
     }
 
