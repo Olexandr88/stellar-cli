@@ -262,6 +262,14 @@ pub struct LocalKey {
     pub key: ed25519_dalek::SigningKey,
 }
 
+impl LocalKey {
+    pub fn sign_tx_hash(&self, tx_hash: [u8; 32]) -> Result<DecoratedSignature, Error> {
+        let hint = SignatureHint(self.key.verifying_key().to_bytes()[28..].try_into()?);
+        let signature = Signature(self.key.sign(&tx_hash).to_bytes().to_vec().try_into()?);
+        Ok(DecoratedSignature { hint, signature })
+    }
+}
+
 #[allow(dead_code)]
 pub struct Ledger<T: Exchange> {
     pub(crate) index: u32,
@@ -333,14 +341,6 @@ pub async fn ledger(
         index: hd_path,
         signer,
     })
-}
-
-impl LocalKey {
-    pub fn sign_tx_hash(&self, tx_hash: [u8; 32]) -> Result<DecoratedSignature, Error> {
-        let hint = SignatureHint(self.key.verifying_key().to_bytes()[28..].try_into()?);
-        let signature = Signature(self.key.sign(&tx_hash).to_bytes().to_vec().try_into()?);
-        Ok(DecoratedSignature { hint, signature })
-    }
 }
 
 pub struct Lab;
