@@ -6,7 +6,7 @@ use stellar_strkey::ed25519::{PrivateKey, PublicKey};
 
 use crate::{
     print::Print,
-    signer::{self, keyring, ledger, LocalKey, Signer, SignerKind},
+    signer::{self, keyring, ledger, KeychainEntry, LocalKey, Signer, SignerKind},
     utils,
 };
 
@@ -112,7 +112,7 @@ impl FromStr for Secret {
             Ok(Secret::Ledger)
         } else if s.starts_with(keyring::KEYCHAIN_ENTRY_PREFIX) {
             Ok(Secret::Keychain {
-                entry_name: s.to_owned(),
+                entry_name: s.to_string(),
             })
         } else {
             Err(Error::InvalidAddress(s.to_string()))
@@ -171,7 +171,9 @@ impl Secret {
                     .expect("uszie bigger than u32");
                 SignerKind::Ledger(ledger(hd_path).await?)
             }
-            Secret::Keychain { .. } => todo!(),
+            Secret::Keychain { entry_name } => SignerKind::Keychain(KeychainEntry {
+                name: entry_name.to_string(),
+            }),
         };
         Ok(Signer { kind, print })
     }
